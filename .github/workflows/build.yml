@@ -1,0 +1,54 @@
+# Build and test on the java versions listed in the README,
+# and with Bouncy Castle as JCE provider (profile bc-tests).
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Java ${{ matrix.java }}${{ matrix.profile && format(' ({0})', matrix.profile) || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [8, 11, 17, 21]
+        profile: ['']
+        include:
+          - java: 17
+            profile: bc-tests
+          - java: 21
+            profile: bc-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Build and test
+        run: mvn --batch-mode --no-transfer-progress verify ${{ matrix.profile && format('-P{0}', matrix.profile) || '' }}
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-java-${{ matrix.java }}${{ matrix.profile && format('-{0}', matrix.profile) || '' }}
+          path: '**/target/surefire-reports/'
+          retention-days: 7
